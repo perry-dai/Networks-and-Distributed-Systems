@@ -1,0 +1,69 @@
+#!/usr/bin/python -u    
+# The -u makes output unbuffered, so it will show up immediately
+import sys
+import socket
+import select
+import json
+ 
+# pads the name with null bytes at the end
+def pad(name):
+        result = '\0' + name
+        while len(result) < 108:
+                result += '\0'
+        return result
+
+if __name__ == "__main__":
+        id = sys.argv[1]
+        LAN = sys.argv[2:]
+        sockets = []        
+	rootid = id
+	cost = 0
+	bpduports = []
+	rootport = 0
+
+        # creates sockets and connects to them
+        for x in range(len(LAN)):
+                s = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+                s.connect(pad(LAN[x]))
+                sockets.append(s)
+        
+        
+        print "Bridge " + id + " starting up\n"
+ 
+        # Main loop
+        while True:
+		# Calls select with all the sockets; change the timeout value (1)
+                ready, ignore, ignore2 = select.select(sockets, [], [], 1)
+ 
+                # Reads from each of the ready sockets
+                for x in ready:
+                        data = x.recv(1500)
+			data = json.loads(data)
+			if data["type"] == "bpdu":
+				port = ready.index(x)
+				if port not in bpduports:
+					bpduports.append(port)
+				if int(rootid, 16) > int(data["message"]["root"], 16):
+                        		rootid = data["message"]["root"]
+					print "New root: " + str(rootid)
+					rootport = port
+					print "Root port: " + str(rootport) 
+                        		cost = data["message"]["cost"] + 1
+
+		#Sends BPDUs to all ready sockets
+		for x in ready:
+			mss = json.dumps({"source":id, "dest":"ffff", "type": "bpdu", "message":{"id":id, "root":rootid, "cost":cost}})
+                        x.send(mss)
+		
+
+		#print "Root id: " + str(rootid) + " Cost: " + str(cost)
+
+
+
+
+
+
+
+
+
+
